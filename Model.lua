@@ -14,7 +14,7 @@ local backend = 'cuda'
 --local backend = 'cl'
 
 if backend == 'cuda' then
-  require 'cutorch'
+--  require 'cutorch'
   require 'cunn'
 elseif backend == 'cl' then
   require 'cltorch'
@@ -49,8 +49,7 @@ function forwardBackwardPass(model, x, y, criterion)
   -- Make `x` and `y` CUDA tensors
 
   local xCuda, yCuda = xyToGPU(x, y)
-
-  local prediction = model:forward(xCuda)
+  local prediction = model:forward(paddedX)
 
   -- Use criterion to compute the loss and its gradients
   local loss        = criterion:forward (prediction, yCuda)
@@ -145,7 +144,7 @@ function createCriterion()
   return criterion
 end
 
-function train(model, batch, epochs, learningRate, updateParameters)
+function train(model, batch, epochs, learningRate, updateParameters, filterMinWidth, filterMaxWidth)
   local criterion     = createCriterion()
 
   -- For each epoch iterate over the entire sequence
@@ -158,10 +157,12 @@ function train(model, batch, epochs, learningRate, updateParameters)
 
       -- Obtain array of 2D tensors
       local sequencesX = Helpers.tensorToArray(x[curBatch])
+      local padX = CNN.addPadding(sequencesX, filterMinWidth, filterMaxWidth)
+      print(padX)
       local sequencesY = Helpers.tensorToArray(y[curBatch])
 
       local prediction, loss =
-        updateParameters(model, sequencesX, sequencesY, criterion, learningRate)
+        updateParameters(model, padX, sequencesY, criterion, learningRate)
 
       print("Loss: ", loss)
     end)
@@ -215,4 +216,4 @@ local model      = createModel(inputSize, hiddenSize, outputSize, filterMinWidth
 print("Model:")
 print(model)
 
-train(model, batch, epochs, learningRate, updateFunction)
+train(model, batch, epochs, learningRate, updateFunction, filterMinWidth, filterMaxWidth)
