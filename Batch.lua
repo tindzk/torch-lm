@@ -19,7 +19,7 @@ end
 -- `batchSize x sequenceLength x maximumTokenLength`.
 function createBatches(tensor, maximumTokenLength, batchSize, sequenceLength)
   local xData = Helpers.init(tensor)
-  local yData = Helpers.slide(tensor, 1)
+  local yData = Helpers.slice(tensor, 1)
 
   -- Cut off tensors so that we can use `batchSize` and `maximumLength` in view()
   local xDataCut = cutOffTensor(xData, batchSize * sequenceLength)

@@ -9,7 +9,7 @@ function Helpers.take(tensor, n)
 end
 
 -- Slice the entire tensor by `n` rows
-function Helpers.slide(tensor, n)
+function Helpers.slice(tensor, n)
   local result = tensor:clone()
   return result
     :sub(1, -(n + 1))
@@ -69,8 +69,8 @@ function Helpers.flatMap(iterator, f)
 end
 
 function Helpers.readFile(file)
-  local f = io.open(file, "rb")
-  local content = f:read("*all")
+  local f = assert(io.open(file, "r"))
+  local content = f:read("*a")
   f:close()
   return content
 end
