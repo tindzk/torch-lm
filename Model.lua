@@ -49,7 +49,7 @@ function forwardBackwardPass(model, x, y, criterion)
   -- Make `x` and `y` CUDA tensors
 
   local xCuda, yCuda = xyToGPU(x, y)
-  local prediction = model:forward(paddedX)
+  local prediction = model:forward(xCuda)
 
   -- Use criterion to compute the loss and its gradients
   local loss        = criterion:forward (prediction, yCuda)
@@ -158,7 +158,6 @@ function train(model, batch, epochs, learningRate, updateParameters, filterMinWi
       -- Obtain array of 2D tensors
       local sequencesX = Helpers.tensorToArray(x[curBatch])
       local padX = CNN.addPadding(sequencesX, filterMinWidth, filterMaxWidth)
-      print(padX)
       local sequencesY = Helpers.tensorToArray(y[curBatch])
 
       local prediction, loss =
