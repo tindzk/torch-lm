@@ -1,28 +1,54 @@
 require "rnn"
 require "gnuplot"
 require "optim"
-require "cunn"
 
 local fun     = require "fun"
 local Text    = require "Text"
 local Batch   = require "Batch"
 local Storage = require "Storage"
 local Helpers = require "Helpers"
+local CNN     = require "CNN"
 
-function forwardBackwardPass(model, x, y, criterion)
-  -- Make `x` and `y` CUDA tensors
-  local xCuda = fun
+
+local backend = 'cuda'
+--local backend = 'cl'
+
+if backend == 'cuda' then
+  require 'cutorch'
+  require 'cunn'
+elseif backend == 'cl' then
+  require 'cltorch'
+  require 'clnn'
+end
+
+function xyToGPU(x,y)
+
+  if backend == 'cuda' then
+    local xCuda = fun
     .iter(x)
     :map(function (x) return x:float():cuda() end)
     :totable()
 
-  -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
-  -- Only one target can be provided per batch element.
-  -- TODO What are the consequences of only keeping the first element?
-  local yCuda = fun
+    -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
+    -- Only one target can be provided per batch element.
+    -- TODO What are the consequences of only keeping the first element?
+    local yCuda = fun
     .iter(y)
     :map(function (x) return x[1]:float():cuda() end)
     :totable()
+    return xCuda, yCuda
+  elseif backend == 'cl' then
+    return x,y -- TODO: openCL
+  end
+
+  return x,y
+
+end
+
+function forwardBackwardPass(model, x, y, criterion)
+  -- Make `x` and `y` CUDA tensors
+
+  local xCuda, yCuda = xyToGPU(x, y)
 
   local prediction = model:forward(xCuda)
 
@@ -81,21 +107,46 @@ function updateParametersSGD(model, input, target, criterion, learningRate)
   return prediction[1][1], loss
 end
 
-function createModel(inputSize, hiddenSize, outputSize)
+function createModel(inputSize, hiddenSize, outputSize, filterMinWidth, filterMaxWidth)
+  local cnnModule = CNN.getParallelConvolution(inputSize, filterMinWidth, filterMaxWidth)
+  local lstmInputSize = torch.range(filterMinWidth, filterMaxWidth):sum()
+
+  local rnnModule = nn.Sequential()
+  rnnModule:add(nn.Linear(lstmInputSize, hiddenSize))
+  rnnModule:add(nn.LSTM(hiddenSize, hiddenSize))
+  rnnModule:add(nn.Dropout(0.5))
+  rnnModule:add(nn.LSTM(hiddenSize, hiddenSize))
+  rnnModule:add(nn.Dropout(0.5))
+  rnnModule:add(nn.Linear(hiddenSize, outputSize))
+  rnnModule:add(nn.LogSoftMax())  -- For ClassNLLCriterion
+  local rnnModuleDecorated = nn.Sequencer(rnnModule)
+
   local model = nn.Sequential()
+  model:add(cnnModule)
+  model:add(rnnModuleDecorated)
 
-  model:add(nn.Linear(inputSize, hiddenSize))
-  model:add(nn.LSTM(hiddenSize, hiddenSize))
-  model:add(nn.LSTM(hiddenSize, hiddenSize))
-  model:add(nn.Linear(hiddenSize, outputSize))
-  model:add(nn.LogSoftMax())  -- For ClassNLLCriterion
+  if backend == 'cuda' then
+    return model:cuda()
+  elseif backend == 'cl' then
+    return model:cl()
+  end
 
-  return nn.Sequencer(model):cuda()
+  return model
+end
+
+function createCriterion()
+  local baseCriterion = nn.ClassNLLCriterion() --:cuda() -- FIXME: should this additional call to cuda be here?
+  local criterion     = nn.SequencerCriterion(baseCriterion)
+  if backend == 'cuda' then
+    return criterion:cuda()
+  elseif backend == 'cl' then
+    return criterion:cl()
+  end
+  return criterion
 end
 
 function train(model, batch, epochs, learningRate, updateParameters)
-  local baseCriterion = nn.ClassNLLCriterion():cuda()
-  local criterion     = nn.SequencerCriterion(baseCriterion):cuda()
+  local criterion     = createCriterion()
 
   -- For each epoch iterate over the entire sequence
   fun.range(1, epochs):each(function (epoch)
@@ -146,6 +197,10 @@ local epochs         = 50
 local hiddenSize     = 512
 local learningRate   = 0.05
 
+-- CNN hyperparameters
+local filterMinWidth = 1
+local filterMaxWidth = 10
+
 -- local updateFunction = updateParametersSGD
 local updateFunction = updateParametersDefault
 
@@ -155,7 +210,7 @@ local batch = Batch("data", batchSize, sequenceLength)
 
 local inputSize  = batch.maximumTokenLength
 local outputSize = #batch.symbols  -- Equivalent to number of classes
-local model      = createModel(inputSize, hiddenSize, outputSize)
+local model      = createModel(inputSize, hiddenSize, outputSize, filterMinWidth, filterMaxWidth)
 
 print("Model:")
 print(model)

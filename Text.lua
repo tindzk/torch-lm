@@ -5,6 +5,7 @@
 require "lfs"
 local fun     = require "fun"
 local rex     = require "rex_pcre"
+--local rex     = require "rex_gnu"
 local utf8    = require "lua-utf8"
 local Storage = require "Storage"
 local Helpers = require "Helpers"
