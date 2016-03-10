@@ -20,30 +20,38 @@ elseif backend == "cl" then
 end
 
 function xyToGPU(x, y)
-  if backend == "cuda" then
-    local xCuda = fun
-      .iter(x)
-      :map(function (x)
-        fun.iter(x):map(function (x2)
+  local xGpu = fun
+    .iter(x)
+    :map(function (x)
+      fun.iter(x):map(function (x2)
+        if backend == "cuda" then
           return x2:float():cuda()
-        end)
+        elseif backend == "cl" then
+          return x2:float():cl()
+        else
+          return x2
+        end
       end)
-      :totable()
+    end)
+    :totable()
 
-    -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
-    -- Only one target can be provided per batch element.
-    -- TODO What are the consequences of only keeping the first element?
-    local yCuda = fun
-      .iter(y)
-      :map(function (x) return x[1]:float():cuda() end)
-      :totable()
+  -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
+  -- Only one target can be provided per batch element.
+  -- TODO What are the consequences of only keeping the first element?
+  local yGpu = fun
+    .iter(y)
+    :map(function (x)
+      if backend == "cuda" then
+        return x[1]:float():cuda()
+      elseif backend == "cl" then
+        return x[1]:float():cl()
+      else
+        return x[1]
+      end
+    end)
+    :totable()
 
-    return xCuda, yCuda
-  elseif backend == "cl" then
-    -- TODO OpenCL
-  end
-
-  return x, y
+  return xGpu, yGpu
 end
 
 function forwardBackwardPass(model, x, y, criterion)
