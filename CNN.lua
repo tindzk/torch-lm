@@ -14,7 +14,7 @@ function CNN.getParallelConvolution(inputSize, filterMinWidth, filterMaxWidth)
   local convModule = nn.ParallelTable()
   fun.each(
     function (width)
-      convModule:add(getConvolutionModule(inputSize+ (width - 1) * 2, width))
+      convModule:add(getConvolutionModule(inputSize + (width - 1) * 2, width))
     end,
     fun.range(filterMinWidth, filterMaxWidth)
   )
@@ -38,8 +38,9 @@ function CNN.addPadding(xTable, filterMinWidth, filterMaxWidth)
       return fun.map(
         function (width)
           if width > 1 then
-            local res = torch.cat(torch.zeros(tensor:size(1), width - 1), tensor, 2)
-            return torch.cat(res, torch.zeros(tensor:size(1), width - 1), 2)
+            local zeros = torch.zeros(tensor:size(1), width - 1)
+            local res = torch.cat(zeros, tensor, 2)
+            return torch.cat(res, zeros, 2)
           else
             return tensor
           end
