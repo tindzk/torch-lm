@@ -9,9 +9,9 @@ local Storage = require "Storage"
 local Helpers = require "Helpers"
 local CNN     = require "CNN"
 
-
 local backend = 'cuda'
---local backend = 'cl'
+-- local backend = 'cl'
+-- local backend = 'cpu'
 
 if backend == 'cuda' then
 --  require 'cutorch'
@@ -21,42 +21,40 @@ elseif backend == 'cl' then
   require 'clnn'
 end
 
-function xyToGPU(x,y)
-
+function xyToGPU(x, y)
   if backend == 'cuda' then
     local xCuda = fun
-    .iter(x)
-    :map(function (x) return x:float():cuda() end)
-    :totable()
+      .iter(x)
+      :map(function (x) return x:float():cuda() end)
+      :totable()
 
     -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
     -- Only one target can be provided per batch element.
     -- TODO What are the consequences of only keeping the first element?
     local yCuda = fun
-    .iter(y)
-    :map(function (x) return x[1]:float():cuda() end)
-    :totable()
+      .iter(y)
+      :map(function (x) return x[1]:float():cuda() end)
+      :totable()
+
     return xCuda, yCuda
   elseif backend == 'cl' then
-    return x,y -- TODO: openCL
+    -- TODO OpenCL
   end
 
-  return x,y
-
+  return x, y
 end
 
 function forwardBackwardPass(model, x, y, criterion)
-  -- Make `x` and `y` CUDA tensors
-
-  local xCuda, yCuda = xyToGPU(x, y)
-  local prediction = model:forward(xCuda)
+  -- Make `x` and `y` CUDA/OpenCL tensors
+  local xGpu, yGpu = xyToGPU(x, y)
+  local prediction = model:forward(xGpu)
 
   -- Use criterion to compute the loss and its gradients
-  local loss        = criterion:forward (prediction, yCuda)
-  local gradOutputs = criterion:backward(prediction, yCuda)
+  local loss        = criterion:forward (prediction, yGpu)
+  local gradOutputs = criterion:backward(prediction, yGpu)
 
   -- The recurrent layer is memorising its gradOutputs
-  model:backward(xCuda, gradOutputs)
+  model:backward(xGpu, gradOutputs)
 
   return prediction, loss
 end
@@ -106,46 +104,49 @@ function updateParametersSGD(model, input, target, criterion, learningRate)
   return prediction[1][1], loss
 end
 
-function createModel(inputSize, hiddenSize, outputSize, filterMinWidth, filterMaxWidth)
-  local cnnModule = CNN.getParallelConvolution(inputSize, filterMinWidth, filterMaxWidth)
-  local lstmInputSize = torch.range(filterMinWidth, filterMaxWidth):sum()
-
+function rnnModule(inputSize, hiddenSize, outputSize, dropout)
   local rnnModule = nn.Sequential()
-  rnnModule:add(nn.Linear(lstmInputSize, hiddenSize))
+  rnnModule:add(nn.Linear(inputSize, hiddenSize))
   rnnModule:add(nn.LSTM(hiddenSize, hiddenSize))
-  rnnModule:add(nn.Dropout(0.5))
+  rnnModule:add(nn.Dropout(dropout))
   rnnModule:add(nn.LSTM(hiddenSize, hiddenSize))
-  rnnModule:add(nn.Dropout(0.5))
+  rnnModule:add(nn.Dropout(dropout))
   rnnModule:add(nn.Linear(hiddenSize, outputSize))
   rnnModule:add(nn.LogSoftMax())  -- For ClassNLLCriterion
-  local rnnModuleDecorated = nn.Sequencer(rnnModule)
+  return rnnModule
+end
+
+function createModel(inputSize, hiddenSize, outputSize, dropout, filterMinWidth, filterMaxWidth)
+  local lstmInputSize = torch.range(filterMinWidth, filterMaxWidth):sum()
 
   local model = nn.Sequential()
-  model:add(cnnModule)
-  model:add(rnnModuleDecorated)
+  model:add(CNN.getParallelConvolution(inputSize, filterMinWidth, filterMaxWidth))
+  model:add(nn.Sequencer(rnnModule(lstmInputSize, hiddenSize, outputSize, dropout)))
 
   if backend == 'cuda' then
     return model:cuda()
   elseif backend == 'cl' then
     return model:cl()
+  else
+    return model
   end
-
-  return model
 end
 
 function createCriterion()
   local baseCriterion = nn.ClassNLLCriterion() --:cuda() -- FIXME: should this additional call to cuda be here?
   local criterion     = nn.SequencerCriterion(baseCriterion)
+
   if backend == 'cuda' then
     return criterion:cuda()
   elseif backend == 'cl' then
     return criterion:cl()
   end
+
   return criterion
 end
 
 function train(model, batch, epochs, learningRate, updateParameters, filterMinWidth, filterMaxWidth)
-  local criterion     = createCriterion()
+  local criterion = createCriterion()
 
   -- For each epoch iterate over the entire sequence
   fun.range(1, epochs):each(function (epoch)
@@ -196,6 +197,7 @@ local sequenceLength = 15  -- Number of time steps of each sequence
 local epochs         = 50
 local hiddenSize     = 512
 local learningRate   = 0.05
+local dropout        = 0.5
 
 -- CNN hyperparameters
 local filterMinWidth = 1
@@ -210,7 +212,7 @@ local batch = Batch("data", batchSize, sequenceLength)
 
 local inputSize  = batch.maximumTokenLength
 local outputSize = #batch.symbols  -- Equivalent to number of classes
-local model      = createModel(inputSize, hiddenSize, outputSize, filterMinWidth, filterMaxWidth)
+local model      = createModel(inputSize, hiddenSize, outputSize, dropout, filterMinWidth, filterMaxWidth)
 
 print("Model:")
 print(model)

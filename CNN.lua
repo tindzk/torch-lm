@@ -61,10 +61,11 @@ function CNN.test()
         torch.rand(10, inputSize),
         torch.rand(10, inputSize)
     }
+
     local input = CNN.addPadding(dataset, filterMinWidth, filterMaxWidth)
     local net = CNN.getParallelConvolution(inputSize, filterMinWidth, filterMaxWidth)
     local result = net:forward(input)
-    print("test passed:", assert(result[4]:size(1) == 55))
+    print("test passed:", result[4]:size(1) == 55)
 end
 
 return CNN
