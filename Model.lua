@@ -14,10 +14,8 @@ local backend = 'cuda'
 -- local backend = 'cpu'
 
 if backend == 'cuda' then
---  require 'cutorch'
   require 'cunn'
 elseif backend == 'cl' then
-  require 'cltorch'
   require 'clnn'
 end
 
@@ -25,7 +23,11 @@ function xyToGPU(x, y)
   if backend == 'cuda' then
     local xCuda = fun
       .iter(x)
-      :map(function (x) return x:float():cuda() end)
+      :map(function (x)
+        fun.iter(x):map(function (x2)
+          return x2:float():cuda()
+        end)
+      end)
       :totable()
 
     -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
