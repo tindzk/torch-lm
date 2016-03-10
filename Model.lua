@@ -9,18 +9,18 @@ local Storage = require "Storage"
 local Helpers = require "Helpers"
 local CNN     = require "CNN"
 
-local backend = 'cuda'
--- local backend = 'cl'
--- local backend = 'cpu'
+local backend = "cuda"
+-- local backend = "cl"
+-- local backend = "cpu"
 
-if backend == 'cuda' then
-  require 'cunn'
-elseif backend == 'cl' then
-  require 'clnn'
+if backend == "cuda" then
+  require "cunn"
+elseif backend == "cl" then
+  require "clnn"
 end
 
 function xyToGPU(x, y)
-  if backend == 'cuda' then
+  if backend == "cuda" then
     local xCuda = fun
       .iter(x)
       :map(function (x)
@@ -39,7 +39,7 @@ function xyToGPU(x, y)
       :totable()
 
     return xCuda, yCuda
-  elseif backend == 'cl' then
+  elseif backend == "cl" then
     -- TODO OpenCL
   end
 
@@ -125,9 +125,9 @@ function createModel(inputSize, hiddenSize, outputSize, dropout, filterMinWidth,
   model:add(CNN.getParallelConvolution(inputSize, filterMinWidth, filterMaxWidth))
   model:add(nn.Sequencer(rnnModule(lstmInputSize, hiddenSize, outputSize, dropout)))
 
-  if backend == 'cuda' then
+  if backend == "cuda" then
     return model:cuda()
-  elseif backend == 'cl' then
+  elseif backend == "cl" then
     return model:cl()
   else
     return model
@@ -138,9 +138,9 @@ function createCriterion()
   local baseCriterion = nn.ClassNLLCriterion() --:cuda() -- FIXME: should this additional call to cuda be here?
   local criterion     = nn.SequencerCriterion(baseCriterion)
 
-  if backend == 'cuda' then
+  if backend == "cuda" then
     return criterion:cuda()
-  elseif backend == 'cl' then
+  elseif backend == "cl" then
     return criterion:cl()
   end
 
