@@ -20,8 +20,18 @@ luarocks install class
 luarocks install luautf8
 luarocks install rnn
 luarocks install nngraph
-luarocks install cutorch
+```
+
+For CUDA support:
+
+```bash
 luarocks install cunn
+```
+
+For OpenCL support:
+
+```bash
+luarocks install clnn
 ```
 
 ## Training
