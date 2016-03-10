@@ -135,7 +135,7 @@ function createModel(inputSize, hiddenSize, outputSize, dropout, filterMinWidth,
 end
 
 function createCriterion()
-  local baseCriterion = nn.ClassNLLCriterion() --:cuda() -- FIXME: should this additional call to cuda be here?
+  local baseCriterion = nn.ClassNLLCriterion()
   local criterion     = nn.SequencerCriterion(baseCriterion)
 
   if backend == "cuda" then
