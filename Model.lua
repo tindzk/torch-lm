@@ -9,9 +9,9 @@ local Storage = require "Storage"
 local Helpers = require "Helpers"
 local CNN     = require "CNN"
 
-local backend = "cuda"
+--local backend = "cuda"
 -- local backend = "cl"
--- local backend = "cpu"
+ local backend = "cpu"
 
 if backend == "cuda" then
   require "cunn"
@@ -21,32 +21,34 @@ end
 
 function xyToGPU(x, y)
   local xGpu = fun
-    .iter(x)
-    :map(function (x)
-      fun.iter(x):map(function (x2)
-        if backend == "cuda" then
-          return x2:float():cuda()
-        elseif backend == "cl" then
-          return x2:float():cl()
-        else
-          return x2
-        end
-      end)
-    end)
-    :totable()
+  .iter(x)
+  :map(function (x)
+      if backend == "cuda" then
+        return x:float():cuda()
+      elseif backend == "cl" then
+        return x:cl() --:float()
+      else
+        return x
+      end
+  end)
+  :totable()
 
   -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
   -- Only one target can be provided per batch element.
   -- TODO What are the consequences of only keeping the first element?
+  -- The consequences are that for every batch you keep only the first target word
+  -- while we need one target (word or at least character) for each element in the butch.
+
+  -- at the moment network is trying to predict first letter (2nd element) of the next word.
   local yGpu = fun
     .iter(y)
     :map(function (x)
       if backend == "cuda" then
-        return x[1]:float():cuda()
+        return x:select(2, 2):clone():float():cuda()
       elseif backend == "cl" then
-        return x[1]:float():cl()
+        return x:select(2, 2):clone():cl() --:float()
       else
-        return x[1]
+        return x:select(2, 2):clone()
       end
     end)
     :totable()
@@ -55,9 +57,13 @@ function xyToGPU(x, y)
 end
 
 function forwardBackwardPass(model, x, y, criterion)
+
+--  print("x", x, "y:", y)
   -- Make `x` and `y` CUDA/OpenCL tensors
   local xGpu, yGpu = xyToGPU(x, y)
-  local prediction = model:forward(xGpu)
+--  print("xGPU sample:", xGpu[1], "yGPU sample:", yGpu[1])
+  local prediction = model:forward(x)
+--  print("prediction sample:", prediction[1])
 
   -- Use criterion to compute the loss and its gradients
   local loss        = criterion:forward (prediction, yGpu)
@@ -126,11 +132,17 @@ function rnnModule(inputSize, hiddenSize, outputSize, dropout)
   return rnnModule
 end
 
-function createModel(inputSize, hiddenSize, outputSize, dropout, filterMinWidth, filterMaxWidth)
-  local lstmInputSize = torch.range(filterMinWidth, filterMaxWidth):sum()
+function createModel(convolutionType,
+                      alphabetLen, charEmbeddingLen,
+                      inputSize, hiddenSize, outputSize,
+                      filterMinWidth, filterMaxWidth, dropout)
+
+  local lstmInputSize = torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
+
+  local cnnModule = CNN.getParallelConvolution(convolutionType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth)
 
   local model = nn.Sequential()
-  model:add(CNN.getParallelConvolution(inputSize, filterMinWidth, filterMaxWidth))
+  model:add(cnnModule)
   model:add(nn.Sequencer(rnnModule(lstmInputSize, hiddenSize, outputSize, dropout)))
 
   if backend == "cuda" then
@@ -155,7 +167,7 @@ function createCriterion()
   return criterion
 end
 
-function train(model, batch, epochs, learningRate, updateParameters, filterMinWidth, filterMaxWidth)
+function train(model, convolutionType, batch, epochs, learningRate, updateParameters, filterMinWidth, filterMaxWidth)
   local criterion = createCriterion()
 
   -- For each epoch iterate over the entire sequence
@@ -167,12 +179,11 @@ function train(model, batch, epochs, learningRate, updateParameters, filterMinWi
       print("## Batch " .. curBatch)
 
       -- Obtain array of 2D tensors
-      local sequencesX = Helpers.tensorToArray(x[curBatch])
-      local padX = CNN.addPadding(sequencesX, filterMinWidth, filterMaxWidth)
-      local sequencesY = Helpers.tensorToArray(y[curBatch])
+      local sequencesX  = Helpers.tensorToArray(x[curBatch])
+      local inputX      = CNN.prepareDataForConvolution(sequencesX, convolutionType, filterMinWidth, filterMaxWidth)
+      local sequencesY  = Helpers.tensorToArray(y[curBatch])
 
-      local prediction, loss =
-        updateParameters(model, padX, sequencesY, criterion, learningRate)
+      local prediction, loss = updateParameters(model, inputX, sequencesY, criterion, learningRate)
 
       print("Loss: ", loss)
     end)
@@ -210,8 +221,10 @@ local learningRate   = 0.05
 local dropout        = 0.5
 
 -- CNN hyperparameters
+local convolutionType = "narrow"
 local filterMinWidth = 1
 local filterMaxWidth = 10
+local charEmbeddingLen = 5
 
 -- local updateFunction = updateParametersSGD
 local updateFunction = updateParametersDefault
@@ -220,11 +233,12 @@ local batch = Batch("data", batchSize, sequenceLength)
 
 -- dumpBatches(batch, 5, 5)
 
-local inputSize  = batch.maximumTokenLength
-local outputSize = #batch.symbols  -- Equivalent to number of classes
-local model      = createModel(inputSize, hiddenSize, outputSize, dropout, filterMinWidth, filterMaxWidth)
+local inputSize   = batch.maximumTokenLength
+local outputSize  = #batch.symbols  -- Equivalent to number of classes
+local alphabetLen = #batch.symbols
+local model       = createModel(convolutionType, alphabetLen, charEmbeddingLen, inputSize, hiddenSize, outputSize, filterMinWidth, filterMaxWidth, dropout)
 
 print("Model:")
 print(model)
 
-train(model, batch, epochs, learningRate, updateFunction, filterMinWidth, filterMaxWidth)
+train(model, convolutionType, batch, epochs, learningRate, updateFunction, filterMinWidth, filterMaxWidth)
