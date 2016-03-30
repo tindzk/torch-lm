@@ -34,11 +34,24 @@ For OpenCL support:
 luarocks install clnn
 ```
 
+For running the test cases:
+
+```bash
+luarocks install busted
+```
+
 ## Training
 Save the text corpus as `input.txt`. To train the model, run:
 
 ```bash
 th Model.lua
+```
+
+## Development
+To run the test cases, execute:
+
+```bash
+busted tests/*
 ```
 
 ## Credits

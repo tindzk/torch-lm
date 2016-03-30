@@ -10,9 +10,9 @@ local Helpers = require "Helpers"
 local CNN     = require "CNN"
 local Highway = require "Highway"
 
---local backend = "cuda"
+local backend = "cuda"
 -- local backend = "cl"
- local backend = "cpu"
+-- local backend = "cpu"
 
 if backend == "cuda" then
   require "cunn"
@@ -22,8 +22,8 @@ end
 
 function xyToGPU(x, y)
   local xGpu = fun
-  .iter(x)
-  :map(function (x)
+    .iter(x)
+    :map(function (x)
       if backend == "cuda" then
         return x:float():cuda()
       elseif backend == "cl" then
@@ -31,8 +31,8 @@ function xyToGPU(x, y)
       else
         return x
       end
-  end)
-  :totable()
+    end)
+    :totable()
 
   -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
   -- Only one target can be provided per batch element.
@@ -58,8 +58,8 @@ function xyToGPU(x, y)
 end
 
 function forwardBackwardPass(model, x, y, criterion)
+  -- print("x", x, "y:", y)
 
---  print("x", x, "y:", y)
   -- Make `x` and `y` CUDA/OpenCL tensors
   local xGpu, yGpu = xyToGPU(x, y)
 --  print("xGPU sample:", xGpu[1], "yGPU sample:", yGpu[1])
@@ -137,11 +137,10 @@ function createModel(convolutionType,
                       alphabetLen, charEmbeddingLen,
                       inputSize, hiddenSize, outputSize,
                       filterMinWidth, filterMaxWidth, highwayLayers, dropout)
-
   local lstmInputSize = torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
 
-  local cnnModule = CNN.getParallelConvolution(convolutionType, alphabetLen, charEmbeddingLen,
-                                                inputSize, filterMinWidth, filterMaxWidth, backend)
+  local cnnModule = CNN.parallelConvolution(convolutionType, alphabetLen, charEmbeddingLen,
+                                            inputSize, filterMinWidth, filterMaxWidth, backend)
 
   local highwayModule = Highway.mlp(lstmInputSize, highwayLayers)
   highwayModule.name = "highway"

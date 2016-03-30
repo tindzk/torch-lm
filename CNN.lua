@@ -3,37 +3,38 @@ local fun = require "fun"
 
 local CNN = {}
 
-function CNN.getParallelConvolution(convType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth, backend)
-    local function getConvolutionModule(inputFrameSize, filterWidth)
-        local conv = nn.Sequential()
-        -- FIXME: what the value for outputFrameSize shoud be is unclear for me
-        local outputFrameSize = 1
---        print("output frame size", outputFrameSize, "input size:", inputFrameSize, "filter width:", filterWidth)
-        if backend == "cl" then
-            conv:add(nn.TemporalConvolution2(inputFrameSize, outputFrameSize, filterWidth))
-            conv:add(nn.SpatialMaxPooling(outputFrameSize, 1))
-        else
-            conv:add(nn.TemporalConvolution(inputFrameSize, outputFrameSize, filterWidth))
-            conv:add(nn.TemporalMaxPooling(outputFrameSize))
-        end
-        return conv
+function CNN.convolutionModule(inputFrameSize, outputFrameSize, filterWidth, backend)
+    local conv = nn.Sequential()
+    if backend == "cl" then
+        conv:add(nn.TemporalConvolution2(inputFrameSize, outputFrameSize, filterWidth))
+        conv:add(nn.SpatialMaxPooling(outputFrameSize, 1))
+    else
+        conv:add(nn.TemporalConvolution(inputFrameSize, outputFrameSize, filterWidth))
+        conv:add(nn.TemporalMaxPooling(outputFrameSize))
     end
+    return conv
+end
 
-    local function getConvolutionTable(convType)
-        if convType == "wide" then
-            return nn.ParallelTable()
-        elseif convType == "narrow" then
-            return nn.ConcatTable()
-        end
+function CNN.convolutionTable(convType)
+    if convType == "wide" then
+        return nn.ParallelTable()
+    elseif convType == "narrow" then
+        return nn.ConcatTable()
     end
+end
 
-    local convModule = getConvolutionTable(convType)
+-- TODO Create separate functions: wideConvolution, narrowConvolution
+function CNN.parallelConvolution(convType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth, backend)
+    -- FIXME: what the value for outputFrameSize shoud be is unclear for me
+    local outputFrameSize = 1
+
+    local convModule = CNN.convolutionTable(convType)
     fun.each(
         function(width)
             if convType == "wide" then
-                convModule:add(getConvolutionModule(inputSize+(width-1)*2, width))
+                convModule:add(CNN.convolutionModule(inputSize + (width - 1) * 2, outputFrameSize, width, backend))
             elseif convType == "narrow" then
-                convModule:add(getConvolutionModule(charEmbeddingLen, width))
+                convModule:add(CNN.convolutionModule(charEmbeddingLen, outputFrameSize, width, backend))
             end
         end,
         fun.range(filterMinWidth, filterMaxWidth)
@@ -88,7 +89,7 @@ end
 
 function CNN.prepareDataForConvolution(dataset, convType, filterMinWidth, filterMaxWidth)
     if convType == "narrow" then
-        return  dataset
+        return dataset
     elseif convType == "wide" then
         return CNN.addPadding(dataset, filterMinWidth, filterMaxWidth)
     end
@@ -118,7 +119,7 @@ function CNN.test()
     local input = CNN.prepareDataForConvolution(dataset, convolutionType, filterMinWidth, filterMaxWidth)
     print("input", input)
 
-    local net = CNN.getParallelConvolution(convolutionType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth)
+    local net = CNN.parallelConvolution(convolutionType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth)
     local result = net:forward(input)
     print("result", result)
 
