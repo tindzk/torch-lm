@@ -8,6 +8,7 @@ local Batch   = require "Batch"
 local Storage = require "Storage"
 local Helpers = require "Helpers"
 local CNN     = require "CNN"
+local Highway = require "Highway"
 
 --local backend = "cuda"
 -- local backend = "cl"
@@ -26,7 +27,7 @@ function xyToGPU(x, y)
       if backend == "cuda" then
         return x:float():cuda()
       elseif backend == "cl" then
-        return x:cl() --:float()
+        return x:float():cl()
       else
         return x
       end
@@ -46,7 +47,7 @@ function xyToGPU(x, y)
       if backend == "cuda" then
         return x:select(2, 2):clone():float():cuda()
       elseif backend == "cl" then
-        return x:select(2, 2):clone():cl() --:float()
+        return x:select(2, 2):clone():float():cl()
       else
         return x:select(2, 2):clone()
       end
@@ -135,14 +136,18 @@ end
 function createModel(convolutionType,
                       alphabetLen, charEmbeddingLen,
                       inputSize, hiddenSize, outputSize,
-                      filterMinWidth, filterMaxWidth, dropout)
+                      filterMinWidth, filterMaxWidth, highwayLayers, dropout)
 
   local lstmInputSize = torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
 
   local cnnModule = CNN.getParallelConvolution(convolutionType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth)
 
+  local highwayModule = Highway.mlp(lstmInputSize, highwayLayers)
+  highwayModule.name = "highway"
+
   local model = nn.Sequential()
   model:add(cnnModule)
+  model:add(nn.Sequencer(highwayModule))
   model:add(nn.Sequencer(rnnModule(lstmInputSize, hiddenSize, outputSize, dropout)))
 
   if backend == "cuda" then
@@ -226,6 +231,9 @@ local filterMinWidth = 1
 local filterMaxWidth = 10
 local charEmbeddingLen = 5
 
+-- Highway hyperparameters
+local highwayLayers = 1
+
 -- local updateFunction = updateParametersSGD
 local updateFunction = updateParametersDefault
 
@@ -236,7 +244,9 @@ local batch = Batch("data", batchSize, sequenceLength)
 local inputSize   = batch.maximumTokenLength
 local outputSize  = #batch.symbols  -- Equivalent to number of classes
 local alphabetLen = #batch.symbols
-local model       = createModel(convolutionType, alphabetLen, charEmbeddingLen, inputSize, hiddenSize, outputSize, filterMinWidth, filterMaxWidth, dropout)
+local model       = createModel(convolutionType, alphabetLen, charEmbeddingLen,
+                                inputSize, hiddenSize, outputSize,
+                                filterMinWidth, filterMaxWidth, highwayLayers, dropout)
 
 print("Model:")
 print(model)
