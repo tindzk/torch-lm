@@ -63,7 +63,7 @@ function forwardBackwardPass(model, x, y, criterion)
   -- Make `x` and `y` CUDA/OpenCL tensors
   local xGpu, yGpu = xyToGPU(x, y)
 --  print("xGPU sample:", xGpu[1], "yGPU sample:", yGpu[1])
-  local prediction = model:forward(x)
+  local prediction = model:forward(xGpu)
 --  print("prediction sample:", prediction[1])
 
   -- Use criterion to compute the loss and its gradients
@@ -140,7 +140,8 @@ function createModel(convolutionType,
 
   local lstmInputSize = torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
 
-  local cnnModule = CNN.getParallelConvolution(convolutionType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth)
+  local cnnModule = CNN.getParallelConvolution(convolutionType, alphabetLen, charEmbeddingLen,
+                                                inputSize, filterMinWidth, filterMaxWidth, backend)
 
   local highwayModule = Highway.mlp(lstmInputSize, highwayLayers)
   highwayModule.name = "highway"

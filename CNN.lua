@@ -3,14 +3,19 @@ local fun = require "fun"
 
 local CNN = {}
 
-function CNN.getParallelConvolution(convType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth)
+function CNN.getParallelConvolution(convType, alphabetLen, charEmbeddingLen, inputSize, filterMinWidth, filterMaxWidth, backend)
     local function getConvolutionModule(inputFrameSize, filterWidth)
         local conv = nn.Sequential()
         -- FIXME: what the value for outputFrameSize shoud be is unclear for me
         local outputFrameSize = 1
 --        print("output frame size", outputFrameSize, "input size:", inputFrameSize, "filter width:", filterWidth)
-        conv:add(nn.TemporalConvolution(inputFrameSize, outputFrameSize, filterWidth))
-        conv:add(nn.TemporalMaxPooling(outputFrameSize))
+        if backend == "cl" then
+            conv:add(nn.TemporalConvolution2(inputFrameSize, outputFrameSize, filterWidth))
+            conv:add(nn.SpatialMaxPooling(outputFrameSize, 1))
+        else
+            conv:add(nn.TemporalConvolution(inputFrameSize, outputFrameSize, filterWidth))
+            conv:add(nn.TemporalMaxPooling(outputFrameSize))
+        end
         return conv
     end
 
