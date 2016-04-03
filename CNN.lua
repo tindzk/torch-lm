@@ -3,13 +3,13 @@ local fun = require "fun"
 
 local CNN = {}
 
-function CNN.convolutionModule(inputFrameSize, outputFrameSize, filterWidth, backend)
+function CNN.convolutionModule(inputFrameSize, outputFrameSize, kernelWidth, backend)
     local conv = nn.Sequential()
     if backend == "cl" then
-        conv:add(nn.TemporalConvolution2(inputFrameSize, outputFrameSize, filterWidth))
+        conv:add(nn.TemporalConvolution2(inputFrameSize, outputFrameSize, kernelWidth))
         conv:add(nn.SpatialMaxPooling(outputFrameSize, 1))
     else
-        conv:add(nn.TemporalConvolution(inputFrameSize, outputFrameSize, filterWidth))
+        conv:add(nn.TemporalConvolution(inputFrameSize, outputFrameSize, kernelWidth))
         conv:add(nn.TemporalMaxPooling(outputFrameSize))
     end
     return conv
