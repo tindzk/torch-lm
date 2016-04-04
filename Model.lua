@@ -10,9 +10,9 @@ local Helpers = require "Helpers"
 local CNN     = require "CNN"
 local Highway = require "Highway"
 
-local backend = "cuda"
+-- local backend = "cuda"
 -- local backend = "cl"
--- local backend = "cpu"
+local backend = "cpu"
 
 if backend == "cuda" then
   require "cunn"
@@ -139,8 +139,11 @@ function createModel(convolutionType,
                       filterMinWidth, filterMaxWidth, highwayLayers, dropout)
   local lstmInputSize = torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
 
-  local cnnModule = CNN.parallelConvolution(convolutionType, alphabetLen, charEmbeddingLen,
-                                            inputSize, filterMinWidth, filterMaxWidth, backend)
+  local cnnModule = nil
+  if convolutionType == "narrow" then
+    cnnModule = CNN.narrowConvolution(inputSize, alphabetLen, charEmbeddingLen,
+       filterMinWidth, filterMaxWidth, backend)
+  end
 
   local highwayModule = Highway.mlp(lstmInputSize, highwayLayers)
   highwayModule.name = "highway"
@@ -185,7 +188,11 @@ function train(model, convolutionType, batch, epochs, learningRate, updateParame
 
       -- Obtain array of 2D tensors
       local sequencesX  = Helpers.tensorToArray(x[curBatch])
-      local inputX      = CNN.prepareDataForConvolution(sequencesX, convolutionType, filterMinWidth, filterMaxWidth)
+      local inputX      = sequencesX
+      if convolutionType == "wide" then
+        inputX = CNN.addPadding(sequencesX, filterMinWidth, filterMaxWidth)
+      end
+
       local sequencesY  = Helpers.tensorToArray(y[curBatch])
 
       local prediction, loss = updateParameters(model, inputX, sequencesY, criterion, learningRate)
@@ -246,7 +253,8 @@ local outputSize  = #batch.symbols  -- Equivalent to number of classes
 local alphabetLen = #batch.symbols
 local model       = createModel(convolutionType, alphabetLen, charEmbeddingLen,
                                 inputSize, hiddenSize, outputSize,
-                                filterMinWidth, filterMaxWidth, highwayLayers, dropout)
+                                filterMinWidth, filterMaxWidth, highwayLayers,
+                                dropout)
 
 print("Model:")
 print(model)
