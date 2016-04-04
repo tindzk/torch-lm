@@ -5,12 +5,11 @@
 require "lfs"
 local fun     = require "fun"
 local rex     = require "rex_pcre"
---local rex     = require "rex_gnu"
 local utf8    = require "lua-utf8"
 local Storage = require "Storage"
 local Helpers = require "Helpers"
 
-local Symbols = {
+Symbols = {
   WordStart = '{',
   WordEnd   = '}',
   ZeroPad   = ' '
@@ -36,7 +35,7 @@ end
 
 -- Cut off words at 25 characters. Prepend `WordStart` and append `WordEnd`,
 -- delete all occurrences of these two tokens in `word`.
-function tokeniseWord(word)
+function Text.tokeniseWord(word)
   if #word > 25 then
     word = word:sub(1, 25)
   end
@@ -57,7 +56,7 @@ function tokeniseWord(word)
 end
 
 -- Creates a character lookup table from tokenised words
-function lookupTable(words)
+function Text.lookupTable(words)
   -- List of collected characters
   local characters = { Symbols.ZeroPad, Symbols.WordStart, Symbols.WordEnd }
 
@@ -80,7 +79,7 @@ function lookupTable(words)
   return characters, characterToIndex
 end
 
-function vectoriseTokens(tokens, indexes)
+function Text.vectoriseTokens(tokens, indexes)
   local maximumTokenLength = tokens:map(function (x) return x:length() end):max()
 
   -- All values are one and thus refer to Symbols.ZeroPad
@@ -99,9 +98,9 @@ end
 
 function loadDataset(data)
   local tokens = Helpers.flatMap(splitSentences(data), splitWords)
-    :map(tokeniseWord)
-  local characters, characterToIndex = lookupTable(tokens)
-  local tensor = vectoriseTokens(tokens, characterToIndex)
+    :map(Text.tokeniseWord)
+  local characters, characterToIndex = Text.lookupTable(tokens)
+  local tensor = Text.vectoriseTokens(tokens, characterToIndex)
 
   return characters, characterToIndex, tensor
 end

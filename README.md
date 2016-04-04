@@ -51,7 +51,7 @@ th Model.lua
 To run the test cases, execute:
 
 ```bash
-busted tests/*
+for t in tests/*; do th $t; done
 ```
 
 ## Credits

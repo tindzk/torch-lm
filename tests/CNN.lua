@@ -1,3 +1,5 @@
+require 'busted.runner'()
+
 local CNN = require "../CNN"
 
 -- TODO Check all backends
