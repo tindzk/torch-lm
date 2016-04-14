@@ -29,15 +29,15 @@ function CNN.narrowConvolution(inputSize, alphabetLen, charEmbeddingLen, filterM
   end)
 
   local joinModule = nn.Sequential()
-  joinModule:add(nn.JoinTable(2))
+  joinModule:add(nn.JoinTable(1))
   local convOutputLength = torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
   joinModule:add(nn.Reshape(convOutputLength))
 
   local net = nn.Sequential()
   -- TODO Move the embedding layer out of this function?
-  net:add(nn.Sequencer(nn.LookupTable(alphabetLen, charEmbeddingLen)))  -- Character embedding
-  net:add(nn.Sequencer(convModule))  -- Convolution
-  net:add(nn.Sequencer(joinModule))  -- Concatenate results into one vector
+  net:add(nn.LookupTable(alphabetLen, charEmbeddingLen))  -- Character embedding
+  net:add(convModule)  -- Convolution
+  net:add(joinModule)  -- Concatenate results into one vector
 
   return net
 end
@@ -57,8 +57,8 @@ function CNN.wideConvolution(inputSize, filterMinWidth, filterMaxWidth, backend)
 
   local net = nn.Sequential()
   -- TODO Add embedding layer for wide convolution
-  net:add(nn.Sequencer(convModule))
-  net:add(nn.Sequencer(joinModule))
+  net:add(convModule)
+  net:add(joinModule)
 
   return net
 end

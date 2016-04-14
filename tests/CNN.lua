@@ -31,17 +31,9 @@ describe("CNN", function()
   end)
 
   it("Narrow convolution", function()
-    local batchSize   = 15
     local inputSize   = 17
     local alphabetLen = 25
-
-    -- Dummy input similar to our real dataset
-    local input = {
-      torch.Tensor(batchSize, inputSize):random(1, alphabetLen),
-      torch.Tensor(batchSize, inputSize):random(1, alphabetLen),
-      torch.Tensor(batchSize, inputSize):random(1, alphabetLen),
-      torch.Tensor(batchSize, inputSize):random(1, alphabetLen)
-    }
+    local input       = torch.Tensor(inputSize):random(1, alphabetLen)
 
     local charEmbeddingLen = 5
     local filterMinWidth   = 1
@@ -51,8 +43,7 @@ describe("CNN", function()
       filterMinWidth, filterMaxWidth, "cpu")
     local result = net:forward(input)
 
-    assert.are.same(result[1]:size():totable(), {
-      batchSize,
+    assert.are.same(result:size():totable(), {
       torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
     })
   end)

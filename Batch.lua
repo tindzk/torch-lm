@@ -15,28 +15,35 @@ function cutOffTensor(tensor, value)
   return tensor
 end
 
--- Returns batches for `x` and `y`. Each batch has the dimension
--- `batchSize x sequenceLength x maximumTokenLength`.
-function createBatches(tensor, maximumTokenLength, batchSize, sequenceLength)
+-- Create batches for inputs and targets. Each batch is of shape
+-- `sequenceLength x batchSize`.
+-- `sequenceLength` indicates the number of timestamps.
+-- `batchSize` indicates the number of sequences per batch.
+-- See also https://github.com/Element-Research/rnn#inputoutput-format
+function createBatches(tensor, batchSize, sequenceLength)
   local xData = Helpers.init(tensor)
   local yData = Helpers.slice(tensor, 1)
 
-  -- Cut off tensors so that we can use `batchSize` and `maximumLength` in view()
-  local xDataCut = cutOffTensor(xData, batchSize * sequenceLength)
-  local yDataCut = cutOffTensor(yData, batchSize * sequenceLength)
+  -- Cut off tensors so that we can use `batchSize` in view()
+  local xDataCut = cutOffTensor(xData, batchSize)
+  local yDataCut = cutOffTensor(yData, batchSize)
 
-  -- Use view() to reshape the tensor in to a 3D matrix; -1 denotes the dimension
+  -- Use view() to reshape the tensor to a 2D matrix; -1 denotes the dimension
   -- to be inferred.
   local xBatches = xDataCut
-    :view(batchSize, -1, maximumTokenLength)
-    :split(sequenceLength, 2)  -- TODO Why 2?
+    :view(batchSize, -1)
+    :split(sequenceLength, 2)  -- Split tensor such that the second dimension is
+                               -- `sequenceLength`.
 
-  -- TODO Is this right?
   local yBatches = yDataCut
-    :view(batchSize, -1, maximumTokenLength)
+    :view(batchSize, -1)
     :split(sequenceLength, 2)
 
-  return {[1] = xBatches, [2] = yBatches}
+  -- Remove last row because it may have less than `batchSize` sequences
+  table.remove(xBatches, #xBatches)
+  table.remove(yBatches, #yBatches)
+
+  return { [1] = xBatches, [2] = yBatches }
 end
 
 -- `batchSize` is the number of sequences in a batch, trained in parallel
@@ -51,17 +58,14 @@ function Batch:__init(dataDir, batchSize, sequenceLength)
   self.validationSet = tensors[DataSet.ValidationSet]
   self.testSet       = tensors[DataSet.TestSet]
 
-  self.maximumTokenLength = self.trainingSet:size(2)
-
   print(string.format('Tokens count (training set): %d', self.trainingSet:size(1)))
   print(string.format('Tokens count (test set): %d', self.testSet:size(1)))
   print(string.format('Tokens count (validation set): %d', self.validationSet:size(1)))
   print(string.format('Token vocabulary size: %d', #self.symbols))
-  print(string.format('Maximum token length: %d', self.maximumTokenLength))
 
-  self.trainingBatches   = createBatches(self.trainingSet, self.maximumTokenLength, batchSize, sequenceLength)
-  self.validationBatches = createBatches(self.validationSet, self.maximumTokenLength, batchSize, sequenceLength)
-  self.testBatches       = createBatches(self.testSet, self.maximumTokenLength, batchSize, sequenceLength)
+  self.trainingBatches   = createBatches(self.trainingSet, batchSize, sequenceLength)
+  self.validationBatches = createBatches(self.validationSet, batchSize, sequenceLength)
+  self.testBatches       = createBatches(self.testSet, batchSize, sequenceLength)
 
   print(string.format('Training batches: %d', #self.trainingBatches[1]))
   print(string.format('Validation batches: %d', #self.trainingBatches[1]))
@@ -86,13 +90,6 @@ function Batch:toText(tensor)
     .iter(tensor:totable())
     :map(function (x) return self.symbols[x] end)
     :foldl(function (acc, cur) return acc .. cur end, "")
-end
-
-function Batch:sequenceToText(tensor)
-  return fun
-    .range(1, tensor:size(1))
-    :map(function (x) return self.toText(self, tensor[x]) end)
-    :foldl(function (acc, cur) return acc .. "\n" .. cur end, "")
 end
 
 return Batch

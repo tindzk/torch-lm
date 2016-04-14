@@ -34,22 +34,15 @@ function xyToGPU(x, y)
     end)
     :totable()
 
-  -- Note the x[1] here. This is due to https://github.com/torch/cutorch/issues/227.
-  -- Only one target can be provided per batch element.
-  -- TODO What are the consequences of only keeping the first element?
-  -- The consequences are that for every batch you keep only the first target word
-  -- while we need one target (word or at least character) for each element in the butch.
-
-  -- at the moment network is trying to predict first letter (2nd element) of the next word.
   local yGpu = fun
     .iter(y)
     :map(function (x)
       if backend == "cuda" then
-        return x:select(2, 2):clone():float():cuda()
+        return x:float():cuda()
       elseif backend == "cl" then
-        return x:select(2, 2):clone():float():cl()
+        return x:float():cl()
       else
-        return x:select(2, 2):clone()
+        return x
       end
     end)
     :totable()
@@ -58,13 +51,9 @@ function xyToGPU(x, y)
 end
 
 function forwardBackwardPass(model, x, y, criterion)
-  -- print("x", x, "y:", y)
-
   -- Make `x` and `y` CUDA/OpenCL tensors
   local xGpu, yGpu = xyToGPU(x, y)
---  print("xGPU sample:", xGpu[1], "yGPU sample:", yGpu[1])
   local prediction = model:forward(xGpu)
---  print("prediction sample:", prediction[1])
 
   -- Use criterion to compute the loss and its gradients
   local loss        = criterion:forward (prediction, yGpu)
@@ -133,11 +122,11 @@ function rnnModule(inputSize, hiddenSize, outputSize, dropout)
   return rnnModule
 end
 
-function createModel(convolutionType,
-                      alphabetLen, charEmbeddingLen,
-                      inputSize, hiddenSize, outputSize,
-                      filterMinWidth, filterMaxWidth, highwayLayers, dropout)
-  local lstmInputSize = torch.range(inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
+function createModel(convolutionType, alphabetLen, charEmbeddingLen, inputSize,
+                     hiddenSize, outputSize, filterMinWidth, filterMaxWidth,
+                     highwayLayers, dropout)
+  local lstmInputSize = torch.range(
+    inputSize - (filterMaxWidth - filterMinWidth), inputSize):sum()
 
   local cnnModule = nil
   if convolutionType == "narrow" then
@@ -148,10 +137,11 @@ function createModel(convolutionType,
   local highwayModule = Highway.mlp(lstmInputSize, highwayLayers)
   highwayModule.name = "highway"
 
-  local model = nn.Sequential()
-  model:add(cnnModule)
-  model:add(nn.Sequencer(highwayModule))
-  model:add(nn.Sequencer(rnnModule(lstmInputSize, hiddenSize, outputSize, dropout)))
+  local model = nn.Sequencer(
+    nn.Sequential()
+      :add(cnnModule)
+      :add(highwayModule)
+      :add(rnnModule(lstmInputSize, hiddenSize, outputSize, dropout)))
 
   if backend == "cuda" then
     return model:cuda()
@@ -209,33 +199,33 @@ function dumpBatches(batch, nBatches, nSequences)
     print("# Batch: " .. batchNumber)
 
     fun.range(1, nSequences):each(function (sequence)
+      print("Sequence " .. sequence)
       local sequenceX = x[batchNumber][sequence]
       local sequenceY = y[batchNumber][sequence]
 
-      print("Sequence " .. sequence)
-      print("x = " .. batch:sequenceToText(sequenceX))
+      print("x = " .. batch:toText(sequenceX))
       print("")
-      print("y = " .. batch:sequenceToText(sequenceY))
+      print("y = " .. batch:toText(sequenceY))
       print("")
     end)
   end)
 end
 
 if not Storage.filesExist("data") then
-  Text.preprocess("input.txt")
+  Text.preprocess("input.txt", Text.charsTensor, 1000000)
 end
 
-local batchSize      = 20  -- Number of sequences in a batch, trained in parallel
-local sequenceLength = 15  -- Number of time steps of each sequence
+local batchSize      = 20   -- Number of sequences in a batch, trained in parallel
+local sequenceLength = 100  -- Number of time steps of each sequence
 local epochs         = 50
 local hiddenSize     = 512
 local learningRate   = 0.05
 local dropout        = 0.5
 
 -- CNN hyperparameters
-local convolutionType = "narrow"
-local filterMinWidth = 1
-local filterMaxWidth = 10
+local convolutionType  = "narrow"
+local filterMinWidth   = 1
+local filterMaxWidth   = 10
 local charEmbeddingLen = 5
 
 -- Highway hyperparameters
@@ -248,7 +238,7 @@ local batch = Batch("data", batchSize, sequenceLength)
 
 -- dumpBatches(batch, 5, 5)
 
-local inputSize   = batch.maximumTokenLength
+local inputSize   = sequenceLength
 local outputSize  = #batch.symbols  -- Equivalent to number of classes
 local alphabetLen = #batch.symbols
 local model       = createModel(convolutionType, alphabetLen, charEmbeddingLen,
