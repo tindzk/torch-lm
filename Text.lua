@@ -9,7 +9,7 @@ local utf8    = require "lua-utf8"
 local Storage = require "Storage"
 local Helpers = require "Helpers"
 
-local Symbols = {
+Symbols = {
   WordStart = '{',
   WordEnd   = '}',
   ZeroPad   = ' '
@@ -35,7 +35,7 @@ end
 
 -- Cut off words at 25 characters. Prepend `WordStart` and append `WordEnd`,
 -- delete all occurrences of these two tokens in `word`.
-function tokeniseWord(word)
+function Text.tokeniseWord(word)
   if #word > 25 then
     word = word:sub(1, 25)
   end
@@ -56,7 +56,7 @@ function tokeniseWord(word)
 end
 
 -- Creates a character lookup table from tokenised words
-function lookupTable(words)
+function Text.lookupTable(words)
   -- List of collected characters
   local characters = { Symbols.ZeroPad, Symbols.WordStart, Symbols.WordEnd }
 
@@ -79,7 +79,7 @@ function lookupTable(words)
   return characters, characterToIndex
 end
 
-function vectoriseTokens(tokens, indexes)
+function Text.vectoriseTokens(tokens, indexes)
   local maximumTokenLength = tokens:map(function (x) return x:length() end):max()
 
   -- All values are one and thus refer to Symbols.ZeroPad
@@ -96,11 +96,32 @@ function vectoriseTokens(tokens, indexes)
   return charsTensor
 end
 
-function loadDataset(data)
+function Text.wordsTensor(data)
   local tokens = Helpers.flatMap(splitSentences(data), splitWords)
-    :map(tokeniseWord)
-  local characters, characterToIndex = lookupTable(tokens)
-  local tensor = vectoriseTokens(tokens, characterToIndex)
+    :map(Text.tokeniseWord)
+  local characters, characterToIndex = Text.lookupTable(tokens)
+  local tensor = Text.vectoriseTokens(tokens, characterToIndex)
+
+  -- print("Tokens: "               .. tensor:size(1))
+  -- print("Maximum token length: " .. tensor:size(2))
+
+  return characters, characterToIndex, tensor
+end
+
+function Text.charsTensor(string)
+  local characters       = {}
+  local characterToIndex = {}
+
+  local table = fun.iter(string):map(function (character)
+    if characterToIndex[character] == nil then
+      characters[#characters + 1] = character
+      characterToIndex[character] = #characters
+    end
+
+    return characterToIndex[character]
+  end):totable()
+
+  local tensor = torch.Tensor(table)
 
   return characters, characterToIndex, tensor
 end
@@ -110,13 +131,13 @@ function saveFiles(dataDir, characters, characterToIndex, tensor)
   local tensorFile     = Storage.tensorFile(dataDir)
 
   print('Saving ' .. vocabularyFile)
-  torch.save(vocabularyFile, {characters, characterToIndex})
+  torch.save(vocabularyFile, { characters, characterToIndex })
 
   print('Saving ' .. tensorFile)
   torch.save(tensorFile, tensor)
 end
 
-function splitTensor(tensor)
+function Text.splitTensor(tensor)
   -- TODO Is there a better way in Torch to split the tensor?
   local trainingSize   = math.floor(tensor:size(1) * 0.50)
   local testSize       = math.floor(tensor:size(1) * 0.25)
@@ -128,9 +149,6 @@ function splitTensor(tensor)
     trainingSize + 1,
     trainingSize + 1 + testSize)
 
-  print(trainingSize + testSize + 1)
-  print(trainingSize + testSize + 1 + validationSize)
-
   local validationSet = tensor:sub(
     trainingSize + testSize + 1,
     math.min(tensor:size(1), trainingSize + testSize + 1 + validationSize))
@@ -138,14 +156,11 @@ function splitTensor(tensor)
   return trainingSet, testSet, validationSet
 end
 
-function Text.preprocess(fileName)
-  local char, charToIndex, tensor = loadDataset(
-    Helpers.readFile(fileName):sub(1, 5000000))  -- TODO Remove limitation
+function Text.preprocess(fileName, tensorFunction, length)
+  local char, charToIndex, tensor = tensorFunction(
+    Helpers.readFile(fileName):sub(1, length))
 
-  print("Tokens: "               .. tensor:size(1))
-  print("Maximum token length: " .. tensor:size(2))
-
-  local training, test, validation = splitTensor(tensor)
+  local training, test, validation = Text.splitTensor(tensor)
 
   local tensors = {
     [DataSet.TrainingSet]   = training,

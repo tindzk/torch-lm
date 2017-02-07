@@ -20,8 +20,24 @@ luarocks install class
 luarocks install luautf8
 luarocks install rnn
 luarocks install nngraph
-luarocks install cutorch
+```
+
+For CUDA support:
+
+```bash
 luarocks install cunn
+```
+
+For OpenCL support:
+
+```bash
+luarocks install clnn
+```
+
+For running the test cases:
+
+```bash
+luarocks install busted
 ```
 
 ## Training
@@ -29,6 +45,13 @@ Save the text corpus as `input.txt`. To train the model, run:
 
 ```bash
 th Model.lua
+```
+
+## Development
+To run the test cases, execute:
+
+```bash
+for t in tests/*; do th $t; done
 ```
 
 ## Credits
@@ -39,3 +62,4 @@ torch-lm is licensed under the terms of the Apache v2.0 license.
 
 ## Authors
 * Tim Nieradzik
+* Alexander Sosnovshchenko
